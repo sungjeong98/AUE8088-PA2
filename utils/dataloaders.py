@@ -799,18 +799,42 @@ class LoadImagesAndLabels(Dataset):
                     shear=hyp["shear"],
                     perspective=hyp["perspective"],
                 )
+        import copy
+        label_img = copy.deepcopy(img)
+        for label in labels:
+            x1, y1, x2, y2 = label[1:5].tolist()
+            cv2.rectangle(label_img, (int(x1), int(y1)), (int(x2), int(y2)), (0, 255, 0), 2)
+        cv2.imwrite("image_label.jpg", label_img)
+        
 
         nl = len(labels)  # number of labels
         if nl:
             labels[:, 1:5] = xyxy2xywhn(labels[:, 1:5], w=img.shape[1], h=img.shape[0], clip=True, eps=1e-3)
-
+        
+        # import copy
+        # label_img = copy.deepcopy(img)
+        # cv2.imwrite("image_before_aug.jpg", label_img)
+        
         if self.augment:
             # Albumentations
             img, labels = self.albumentations(img, labels)
             nl = len(labels)  # update after albumentations
 
+            # import copy
+            # label_img = copy.deepcopy(img)
+            # # for label in labels4:
+            # #     x1, y1, x2, y2 = label[1:5].tolist()
+            # #     cv2.rectangle(label_img, (int(x1), int(y1)), (int(x2), int(y2)), (0, 255, 0), 2)
+            # cv2.imwrite("image_after_albumentation.jpg", label_img)
+
             # HSV color-space
             augment_hsv(img, hgain=hyp["hsv_h"], sgain=hyp["hsv_s"], vgain=hyp["hsv_v"])
+
+            # label_img = copy.deepcopy(img)
+            # # for label in labels4:
+            # #     x1, y1, x2, y2 = label[1:5].tolist()
+            # #     cv2.rectangle(label_img, (int(x1), int(y1)), (int(x2), int(y2)), (0, 255, 0), 2)
+            # cv2.imwrite("image_after_hsv.jpg", label_img)
 
             # Flip up-down
             if random.random() < hyp["flipud"]:
