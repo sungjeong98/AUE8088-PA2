@@ -156,14 +156,15 @@ def random_perspective(
 ):
     # torchvision.transforms.RandomAffine(degrees=(-10, 10), translate=(0.1, 0.1), scale=(0.9, 1.1), shear=(-10, 10))
     # targets = [cls, xyxy]
+    images = im if isinstance(im, list) else [im]
 
-    height = im.shape[0] + border[0] * 2  # shape(h,w,c)
-    width = im.shape[1] + border[1] * 2
+    height = images[0].shape[0] + border[0] * 2  # shape(h,w,c)
+    width = images[0].shape[1] + border[1] * 2
 
     # Center
     C = np.eye(3)
-    C[0, 2] = -im.shape[1] / 2  # x translation (pixels)
-    C[1, 2] = -im.shape[0] / 2  # y translation (pixels)
+    C[0, 2] = -images[0].shape[1] / 2  # x translation (pixels)
+    C[1, 2] = -images[0].shape[0] / 2  # y translation (pixels)
 
     # Perspective
     P = np.eye(3)
@@ -191,10 +192,15 @@ def random_perspective(
     # Combined rotation matrix
     M = T @ S @ R @ P @ C  # order of operations (right to left) is IMPORTANT
     if (border[0] != 0) or (border[1] != 0) or (M != np.eye(3)).any():  # image changed
+        im = []
         if perspective:
-            im = cv2.warpPerspective(im, M, dsize=(width, height), borderValue=(114, 114, 114))
+            for i, image in enumerate(images):
+                images[i] = cv2.warpPerspective(image, M, dsize=(width, height), borderValue=(114, 114, 114))
+                im.append(images[i])
         else:  # affine
-            im = cv2.warpAffine(im, M[:2], dsize=(width, height), borderValue=(114, 114, 114))
+            for i, image in enumerate(images):
+                images[i] = cv2.warpPerspective(image, M, dsize=(width, height), borderValue=(114, 114, 114))
+                im.append(images[i])
 
     # Visualize
     # import matplotlib.pyplot as plt
@@ -249,8 +255,13 @@ def copy_paste(im, labels, segments, p=0.5):
     """
     n = len(segments)
     if p and n:
-        h, w, c = im.shape  # height, width, channels
-        im_new = np.zeros(im.shape, np.uint8)
+        if isinstance(im, list):
+            h, w, c = im[0].shape  # height, width, channels
+            im_new = np.zeros(im[0].shape, np.uint8)
+        else:
+            h, w, c = im.shape  # height, width, channels
+            im_new = np.zeros(im.shape, np.uint8)
+
         for j in random.sample(range(n), k=round(p * n)):
             l, s = labels[j], segments[j]
             box = w - l[3], l[2], w - l[1], l[4]
@@ -259,10 +270,18 @@ def copy_paste(im, labels, segments, p=0.5):
                 labels = np.concatenate((labels, [[l[0], *box]]), 0)
                 segments.append(np.concatenate((w - s[:, 0:1], s[:, 1:2]), 1))
                 cv2.drawContours(im_new, [segments[j].astype(np.int32)], -1, (1, 1, 1), cv2.FILLED)
-
-        result = cv2.flip(im, 1)  # augment segments (flip left-right)
-        i = cv2.flip(im_new, 1).astype(bool)
-        im[i] = result[i]  # cv2.imwrite('debug.jpg', im)  # debug
+        if isinstance(im, list):
+            im_list = []
+            for img in im:
+                result = cv2.flip(img, 1)  # augment segments (flip left-right)
+                i = cv2.flip(im_new, 1).astype(bool)
+                img[i] = result[i]  # cv2.imwrite('debug.jpg', im)  # debug
+                im_list.append(img)
+            im = im_list
+        else:
+            result = cv2.flip(im, 1)  # augment segments (flip left-right)
+            i = cv2.flip(im_new, 1).astype(bool)
+            im[i] = result[i]  # cv2.imwrite('debug.jpg', im)  # debug
 
     return im, labels, segments
 
@@ -305,7 +324,12 @@ def mixup(im, labels, im2, labels2):
     See https://arxiv.org/pdf/1710.09412.pdf for details.
     """
     r = np.random.beta(32.0, 32.0)  # mixup ratio, alpha=beta=32.0
-    im = (im * r + im2 * (1 - r)).astype(np.uint8)
+    if isinstance (im, list):
+        im_t = (im[0] * r + im2[0] * (1 - r)).astype(np.uint8)
+        im_rgb = (im[1] * r + im2[1] * (1 - r)).astype(np.uint8)
+        im = [im_t, im_rgb]
+    else:
+        im = (im * r + im2 * (1 - r)).astype(np.uint8)
     labels = np.concatenate((labels, labels2), 0)
     return im, labels
 

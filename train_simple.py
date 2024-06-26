@@ -186,7 +186,7 @@ def train(hyp, opt, device, callbacks):
         gs,
         single_cls,
         hyp=hyp,
-        augment=False,      # TODO: make it work
+        augment=True,      # TODO: make it work
         cache=None if opt.cache == "val" else opt.cache,
         rect=opt.rect,
         rank=-1,
@@ -210,6 +210,7 @@ def train(hyp, opt, device, callbacks):
         gs,
         single_cls,
         hyp=hyp,
+        augment=False,
         cache=None if noval else opt.cache,
         rect=False,     # Should be set to False for validation, otherwise it will break evaluation pipeline
         rank=-1,

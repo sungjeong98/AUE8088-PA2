@@ -1084,7 +1084,7 @@ class LoadRGBTImagesAndLabels(LoadImagesAndLabels):
 
     def __init__(self, path, **kwargs):
         # HACK: cannot guarantee that path contain split name
-        is_train = 'train' in path
+        is_train = 'train' in path[0]
         single_cls = kwargs['single_cls']
         kwargs['single_cls'] = False
         assert kwargs['cache_images'] != 'ram', 'Image caching for RGBT dataset is not implemented yet.'
@@ -1095,7 +1095,10 @@ class LoadRGBTImagesAndLabels(LoadImagesAndLabels):
         super().__init__(path, **kwargs)
 
         # TODO: make mosaic augmentation work
-        self.mosaic = False
+        if is_train:
+            self.mosaic = True
+        else:
+            self.mosaic = False
 
         # Set ignore flag
         cond = self.ignore_settings['train' if is_train else 'test']
@@ -1200,15 +1203,50 @@ class LoadRGBTImagesAndLabels(LoadImagesAndLabels):
         hyp = self.hyp
         mosaic = self.mosaic and random.random() < hyp["mosaic"]
         if mosaic:
-            raise NotImplementedError('Please make "mosaic" augmentation work!')
+            # raise NotImplementedError('Please make "mosaic" augmentation work!')
 
             # TODO: Load mosaic
-            img, labels = self.load_mosaic(index)
-            shapes = None
+            imgs, labels = self.load_rgbt_mosaic(index)
+            shapes = ((640, 640), ((1.0, 1.0), (0.0, 64.0)))
 
             # TODO: MixUp augmentation
             if random.random() < hyp["mixup"]:
-                img, labels = mixup(img, labels, *self.load_mosaic(random.choice(self.indices)))
+                imgs, labels = mixup(imgs, labels, *self.load_rgbt_mosaic(random.choice(self.indices)))
+
+            nl = len(labels)  # number of labels
+            if nl:
+                labels[:, 1:5] = xyxy2xywhn(labels[:, 1:5], w=imgs[0].shape[1], h=imgs[0].shape[0], clip=True, eps=1e-3)
+                
+            if self.augment:
+                # HSV color-space
+                for img in imgs:
+                    augment_hsv(img, hgain=hyp["hsv_h"], sgain=hyp["hsv_s"], vgain=hyp["hsv_v"])
+
+                # Flip up-down
+                if random.random() < hyp["flipud"]:
+                    imgs[0] = np.flipud(imgs[0])
+                    imgs[1] = np.flipud(imgs[1])
+                    if nl:
+                        labels[:, 2] = 1 - labels[:, 2]
+
+                # Flip left-right
+                if random.random() < hyp["fliplr"]:
+                    imgs[0] = np.fliplr(imgs[0])
+                    imgs[1] = np.fliplr(imgs[1])
+                    if nl:
+                        labels[:, 1] = 1 - labels[:, 1]
+
+            labels_out = torch.zeros((nl, 7))
+            if nl:
+                labels_out[:, 1:] = torch.from_numpy(labels)
+
+            # Convert
+            img_t = imgs[0].transpose((2, 0, 1))[::-1]  # HWC to CHW, BGR to RGB
+            img_t = np.ascontiguousarray(img_t)
+            imgs[0] = torch.from_numpy(img_t)
+            img_rgb = imgs[1].transpose((2, 0, 1))[::-1]  # HWC to CHW, BGR to RGB
+            img_rgb = np.ascontiguousarray(img_rgb)
+            imgs[1] = torch.from_numpy(img_rgb)
 
         else:
             # Load image
@@ -1227,7 +1265,7 @@ class LoadRGBTImagesAndLabels(LoadImagesAndLabels):
                     labels[:, 1:] = xywhn2xyxy(labels[:, 1:], ratio[0] * w, ratio[1] * h, padw=pad[0], padh=pad[1])
 
                 if self.augment:
-                    raise NotImplementedError('Please make data augmentation work!')
+                    # raise NotImplementedError('Please make data augmentation work!')
 
                     img, labels = random_perspective(
                         img,
@@ -1238,6 +1276,7 @@ class LoadRGBTImagesAndLabels(LoadImagesAndLabels):
                         shear=hyp["shear"],
                         perspective=hyp["perspective"],
                     )
+                    img = img[0]
 
                 nl = len(labels)  # number of labels
                 if nl:
